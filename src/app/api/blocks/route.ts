@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { enforceApiAccess } from "@/lib/authGuards";
 import { blockUser } from "@/lib/store";
-import { getPublicProfile } from "@/lib/users";
+import { getPublicProfileAsync } from "@/lib/users";
 
 interface BlockBody {
   blockedId: string;
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const target = getPublicProfile(body.blockedId);
+    const target = await getPublicProfileAsync(body.blockedId);
     if (!target) {
       return NextResponse.json(
         { error: "ユーザーが見つかりません" },

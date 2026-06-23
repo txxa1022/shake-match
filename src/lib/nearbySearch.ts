@@ -1,8 +1,24 @@
-import { haversineDistanceMeters, formatDistanceLabel } from "./haversine";
+import { ageFromBirthDate } from "./age";
+import { formatDistanceLabel, haversineDistanceMeters } from "./haversine";
 import { MOCK_USERS } from "./mockUsers";
-import type { FilterSettings, NearbyUser } from "./types";
+import { getSql, isDbConfigured, isUuid } from "./db";
+import type { FilterSettings, Gender, NearbyUser } from "./types";
 
-export function findNearbyUsers(
+const DEFAULT_PHOTO_URL =
+  "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&h=500&fit=crop";
+
+interface NearbyUserRow {
+  id: string;
+  nickname: string;
+  gender: Gender;
+  birth_date: string;
+  photo_url: string | null;
+  favorite_food: string | null;
+  hobbies: string | null;
+  distance_meters: number;
+}
+
+function findNearbyUsersMock(
   latitude: number,
   longitude: number,
   filters: FilterSettings,
@@ -23,7 +39,72 @@ export function findNearbyUsers(
   })
     .filter((user) => user.distanceMeters <= filters.maxDistanceMeters)
     .filter((user) => user.age >= filters.ageMin && user.age <= filters.ageMax)
-    .filter((user) => filters.gender === "any" || user.gender === filters.gender)
+    .filter(
+      (user) => filters.gender === "any" || user.gender === filters.gender,
+    )
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, limit);
+}
+
+function mapRowToNearbyUser(row: NearbyUserRow): NearbyUser {
+  return {
+    id: row.id,
+    nickname: row.nickname,
+    age: ageFromBirthDate(row.birth_date),
+    gender: row.gender,
+    photoUrl: row.photo_url || DEFAULT_PHOTO_URL,
+    favoriteFood: row.favorite_food || "",
+    hobbies: row.hobbies || "",
+    latitude: 0,
+    longitude: 0,
+    distanceMeters: row.distance_meters,
+    distanceLabel: formatDistanceLabel(row.distance_meters),
+  };
+}
+
+export async function findNearbyUsers(
+  latitude: number,
+  longitude: number,
+  filters: FilterSettings,
+  options?: { excludeUserId?: string; limit?: number },
+): Promise<NearbyUser[]> {
+  const limit = options?.limit ?? 20;
+
+  if (!isDbConfigured()) {
+    return findNearbyUsersMock(latitude, longitude, filters, limit);
+  }
+
+  const sql = getSql();
+  if (!sql) {
+    return findNearbyUsersMock(latitude, longitude, filters, limit);
+  }
+
+  const excludeUserId = options?.excludeUserId;
+  const excludeUuid =
+    excludeUserId && isUuid(excludeUserId) ? excludeUserId : null;
+
+  try {
+    const rows = await sql`
+      select *
+      from find_nearby_users(
+        ${latitude},
+        ${longitude},
+        ${filters.maxDistanceMeters},
+        ${filters.ageMin},
+        ${filters.ageMax},
+        ${filters.gender},
+        ${excludeUuid},
+        ${limit}
+      )
+    `;
+
+    return (rows as NearbyUserRow[]).map(mapRowToNearbyUser);
+  } catch (error) {
+    console.error("find_nearby_users failed, falling back to mock:", error);
+    return findNearbyUsersMock(latitude, longitude, filters, limit);
+  }
+}
+
+export function usesDbNearbySearch(): boolean {
+  return isDbConfigured();
 }

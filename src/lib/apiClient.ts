@@ -1,4 +1,4 @@
-import { DEMO_USER_ID } from "@/lib/demoMode";
+import { getStoredUserId } from "@/lib/userIdStorage";
 
 interface ApiFetchOptions extends RequestInit {
   json?: unknown;
@@ -15,7 +15,7 @@ export async function apiFetch<T>(
     headers: {
       "Content-Type": "application/json",
       // TEMP: DEMO_MODE bypass - 本番では削除必須（JWT 等に置き換え）
-      "X-User-Id": DEMO_USER_ID,
+      "X-User-Id": getStoredUserId(),
       ...headers,
     },
     body: json !== undefined ? JSON.stringify(json) : rest.body,

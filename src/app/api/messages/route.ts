@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getConversationsForUser } from "@/lib/conversations";
 import { enforceApiAccess } from "@/lib/authGuards";
 import { canSendMessage, createMessage } from "@/lib/store";
-import { getPublicProfile } from "@/lib/users";
+import { getPublicProfileAsync } from "@/lib/users";
 import type { Message } from "@/lib/types";
 
 export async function GET(request: Request) {
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const receiver = getPublicProfile(body.receiverId);
+    const receiver = await getPublicProfileAsync(body.receiverId);
     if (!receiver) {
       return NextResponse.json(
         { error: "送信先ユーザーが見つかりません" },

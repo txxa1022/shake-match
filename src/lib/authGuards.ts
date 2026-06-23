@@ -1,16 +1,28 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import {
   getAuthUserById,
   getDemoAuthUser,
   verifyAuthToken,
   type AuthUser,
 } from "@/lib/auth";
+import { isUuid } from "@/lib/db";
 import { DEMO_USER_ID, isDemoMode } from "@/lib/demoMode";
 import { getUserIdFromRequest } from "@/lib/serverAuth";
+import { USER_ID_COOKIE } from "@/lib/userIdStorage";
 
 export type ApiAccessResult =
   | { ok: true; user: AuthUser }
   | { ok: false; response: NextResponse };
+
+function resolveDemoUserFromRequest(request: Request): AuthUser {
+  const headerUserId = request.headers.get("x-user-id")?.trim();
+  const demoUser = getDemoAuthUser();
+  if (headerUserId && headerUserId !== DEMO_USER_ID && isUuid(headerUserId)) {
+    return { ...demoUser, id: headerUserId };
+  }
+  return demoUser;
+}
 
 /**
  * API ルート用: 認証 + KYC (is_adult_verified) を検証する。
@@ -19,7 +31,7 @@ export type ApiAccessResult =
 export function enforceApiAccess(request: Request): ApiAccessResult {
   if (isDemoMode()) {
     // TEMP: DEMO_MODE bypass - 本番では削除必須
-    return { ok: true, user: getDemoAuthUser() };
+    return { ok: true, user: resolveDemoUserFromRequest(request) };
   }
 
   const authorization = request.headers.get("authorization");
@@ -62,10 +74,16 @@ export function enforceApiAccess(request: Request): ApiAccessResult {
 /**
  * サーバーコンポーネント用: 認証済みユーザーIDを取得する。
  */
-export function getServerAuthenticatedUser(): AuthUser {
+export async function getServerAuthenticatedUser(): Promise<AuthUser> {
   if (isDemoMode()) {
     // TEMP: DEMO_MODE bypass - 本番では削除必須
-    return getDemoAuthUser();
+    const cookieStore = await cookies();
+    const userId = cookieStore.get(USER_ID_COOKIE)?.value;
+    const demoUser = getDemoAuthUser();
+    if (userId && isUuid(userId)) {
+      return { ...demoUser, id: userId };
+    }
+    return demoUser;
   }
 
   // TODO: セッション Cookie からユーザーを解決

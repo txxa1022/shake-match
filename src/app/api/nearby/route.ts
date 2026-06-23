@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { enforceApiAccess } from "@/lib/authGuards";
 import { findNearbyUsers } from "@/lib/nearbySearch";
 import { recordProximityMatches } from "@/lib/store";
+import { upsertUserLocation } from "@/lib/userLocations";
 import {
   DEFAULT_FILTERS,
   type FilterSettings,
@@ -45,13 +46,25 @@ export async function POST(request: Request) {
       );
     }
 
+    const currentUserId = access.user.id;
+
+    await upsertUserLocation(
+      currentUserId,
+      body.latitude,
+      body.longitude,
+    );
+
     const filters = parseFilters(body.filters);
-    const users = findNearbyUsers(body.latitude, body.longitude, filters);
+    const users = await findNearbyUsers(
+      body.latitude,
+      body.longitude,
+      filters,
+      { excludeUserId: currentUserId },
+    );
     const publicUsers = users.map(
       ({ latitude: _lat, longitude: _lng, ...rest }) => rest,
     );
 
-    const currentUserId = access.user.id;
     const proximityMatches = recordProximityMatches(
       currentUserId,
       publicUsers.map((user) => user.id),
@@ -63,7 +76,8 @@ export async function POST(request: Request) {
       filters,
       proximityMatchCount: proximityMatches.length,
     });
-  } catch {
+  } catch (error) {
+    console.error("POST /api/nearby failed:", error);
     return NextResponse.json(
       { error: "近接ユーザーの取得に失敗しました" },
       { status: 500 },

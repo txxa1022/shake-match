@@ -7,7 +7,7 @@ import {
   isBlocked,
   markMessagesAsRead,
 } from "@/lib/store";
-import { getPublicProfile } from "@/lib/users";
+import { getPublicProfileAsync } from "@/lib/users";
 
 interface RouteContext {
   params: Promise<{ userId: string }>;
@@ -20,7 +20,7 @@ export async function GET(request: Request, context: RouteContext) {
   const currentUserId = access.user.id;
   const { userId: partnerId } = await context.params;
 
-  const partner = getPublicProfile(partnerId);
+  const partner = await getPublicProfileAsync(partnerId);
   if (!partner) {
     return NextResponse.json(
       { error: "ユーザーが見つかりません" },

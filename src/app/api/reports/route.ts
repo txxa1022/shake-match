@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { enforceApiAccess } from "@/lib/authGuards";
 import { createReport } from "@/lib/store";
-import { getPublicProfile } from "@/lib/users";
+import { getPublicProfileAsync } from "@/lib/users";
 
 interface ReportBody {
   reportedUserId: string;
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const target = getPublicProfile(body.reportedUserId);
+    const target = await getPublicProfileAsync(body.reportedUserId);
     if (!target) {
       return NextResponse.json(
         { error: "ユーザーが見つかりません" },

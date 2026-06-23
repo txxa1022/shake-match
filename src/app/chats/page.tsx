@@ -3,8 +3,8 @@ import { ChatList } from "@/components/ChatList";
 import { getConversationsForUser } from "@/lib/conversations";
 import { getServerAuthenticatedUser } from "@/lib/authGuards";
 
-export default function ChatsPage() {
-  const user = getServerAuthenticatedUser();
+export default async function ChatsPage() {
+  const user = await getServerAuthenticatedUser();
   const conversations = getConversationsForUser(user.id);
 
   return (
