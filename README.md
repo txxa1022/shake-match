@@ -144,3 +144,4 @@ Project Settings → Environment Variables:
 | `DEMO_MODE` | `false` | Production |
 
 または Production 環境には `DEMO_MODE` を追加しない（未設定 = 本番チェック有効）。
+
