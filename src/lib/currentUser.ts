@@ -11,6 +11,7 @@ export const CURRENT_USER: UserProfile = {
     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&h=500&fit=crop",
   favoriteFood: "和食",
   hobbies: "散歩・音楽",
+  spotMeText: "",
   latitude: 35.658,
   longitude: 139.7016,
 };

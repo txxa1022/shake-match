@@ -2,10 +2,40 @@ import { ageFromBirthDate } from "./age";
 import { formatDistanceLabel, haversineDistanceMeters } from "./haversine";
 import { MOCK_USERS } from "./mockUsers";
 import { getSql, isDbConfigured, isUuid } from "./db";
+import { isBeaconActive } from "./userLocations";
 import type { FilterSettings, Gender, NearbyUser } from "./types";
+import { BEACON_DURATION_MINUTES } from "./types";
 
 const DEFAULT_PHOTO_URL =
   "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&h=500&fit=crop";
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __shakeMatchMockBeacons: Map<string, string> | undefined;
+}
+
+function getMockBeacons(): Map<string, string> {
+  if (!globalThis.__shakeMatchMockBeacons) {
+    globalThis.__shakeMatchMockBeacons = new Map();
+  }
+  return globalThis.__shakeMatchMockBeacons;
+}
+
+function getMockUserBeacon(userId: string): string | null {
+  const beacons = getMockBeacons();
+  const existing = beacons.get(userId);
+  if (existing) return existing;
+
+  const until = new Date(
+    Date.now() + BEACON_DURATION_MINUTES * 60 * 1000,
+  ).toISOString();
+  beacons.set(userId, until);
+  return until;
+}
+
+export function expireMockUserBeacon(userId: string): void {
+  getMockBeacons().set(userId, new Date(Date.now() - 60_000).toISOString());
+}
 
 interface NearbyUserRow {
   id: string;
@@ -15,6 +45,7 @@ interface NearbyUserRow {
   photo_url: string | null;
   favorite_food: string | null;
   hobbies: string | null;
+  spot_me_text: string | null;
   distance_meters: number;
 }
 
@@ -37,6 +68,10 @@ function findNearbyUsersMock(
       distanceLabel: formatDistanceLabel(distanceMeters),
     };
   })
+    .filter((user) => {
+      const beaconUntil = getMockUserBeacon(user.id);
+      return beaconUntil !== null && isBeaconActive(beaconUntil);
+    })
     .filter((user) => user.distanceMeters <= filters.maxDistanceMeters)
     .filter((user) => user.age >= filters.ageMin && user.age <= filters.ageMax)
     .filter(
@@ -55,6 +90,7 @@ function mapRowToNearbyUser(row: NearbyUserRow): NearbyUser {
     photoUrl: row.photo_url || DEFAULT_PHOTO_URL,
     favoriteFood: row.favorite_food || "",
     hobbies: row.hobbies || "",
+    spotMeText: row.spot_me_text || "",
     latitude: 0,
     longitude: 0,
     distanceMeters: row.distance_meters,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { enforceApiAccess } from "@/lib/authGuards";
+import { evaluateMatchExpirationsOnShake } from "@/lib/matching";
 import { findNearbyUsers } from "@/lib/nearbySearch";
 import { recordProximityMatches } from "@/lib/store";
 import { upsertUserLocation } from "@/lib/userLocations";
@@ -54,6 +55,10 @@ export async function POST(request: Request) {
       body.longitude,
     );
 
+    const expiredMatchCount = await evaluateMatchExpirationsOnShake(
+      currentUserId,
+    );
+
     const filters = parseFilters(body.filters);
     const users = await findNearbyUsers(
       body.latitude,
@@ -75,6 +80,7 @@ export async function POST(request: Request) {
       count: publicUsers.length,
       filters,
       proximityMatchCount: proximityMatches.length,
+      expiredMatchCount,
     });
   } catch (error) {
     console.error("POST /api/nearby failed:", error);

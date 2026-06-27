@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { enforceApiAccess } from "@/lib/authGuards";
 import { isDemoMode } from "@/lib/demoMode";
 import { isDbConfigured } from "@/lib/db";
-import { createUserInDb } from "@/lib/users";
+import {
+  createUserInDb,
+  getProfileByIdAsync,
+  getPublicProfileAsync,
+  SPOT_ME_TEXT_MAX_LENGTH,
+  updateUserInDb,
+} from "@/lib/users";
 import { USER_ID_COOKIE } from "@/lib/userIdStorage";
 import type { Gender } from "@/lib/types";
 
@@ -11,10 +18,48 @@ interface CreateProfileBody {
   birthDate: string;
   favoriteFood: string;
   hobbies: string;
+  spotMeText?: string;
+}
+
+interface UpdateProfileBody {
+  nickname?: string;
+  favoriteFood?: string;
+  hobbies?: string;
+  spotMeText?: string;
 }
 
 function isValidBirthDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function normalizeSpotMeText(value: string | undefined): string {
+  return (value ?? "").trim().slice(0, SPOT_ME_TEXT_MAX_LENGTH);
+}
+
+export async function GET(request: Request) {
+  const access = enforceApiAccess(request);
+  if (!access.ok) return access.response;
+
+  if (isDbConfigured()) {
+    const profile = await getPublicProfileAsync(access.user.id);
+    if (!profile) {
+      return NextResponse.json(
+        { error: "プロフィールが見つかりません" },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ profile, editable: true });
+  }
+
+  const mockProfile = await getProfileByIdAsync(access.user.id);
+  if (!mockProfile) {
+    return NextResponse.json(
+      { error: "プロフィールが見つかりません" },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({ profile: mockProfile, editable: false });
 }
 
 export async function POST(request: Request) {
@@ -30,6 +75,7 @@ export async function POST(request: Request) {
     const nickname = body.nickname?.trim();
     const favoriteFood = body.favoriteFood?.trim();
     const hobbies = body.hobbies?.trim();
+    const spotMeText = normalizeSpotMeText(body.spotMeText);
 
     if (!nickname) {
       return NextResponse.json(
@@ -61,6 +107,7 @@ export async function POST(request: Request) {
       birthDate: body.birthDate,
       favoriteFood: favoriteFood || "",
       hobbies: hobbies || "",
+      spotMeText,
       isAdultVerified,
       kycStatus,
     });
@@ -78,6 +125,52 @@ export async function POST(request: Request) {
     console.error("Profile creation failed:", error);
     return NextResponse.json(
       { error: "プロフィールの作成に失敗しました" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  const access = enforceApiAccess(request);
+  if (!access.ok) return access.response;
+
+  if (!isDbConfigured()) {
+    return NextResponse.json(
+      { error: "DATABASE_URL が未設定のためプロフィール編集は利用できません" },
+      { status: 503 },
+    );
+  }
+
+  try {
+    const body = (await request.json()) as UpdateProfileBody;
+    const nickname = body.nickname?.trim();
+    const favoriteFood = body.favoriteFood?.trim();
+    const hobbies = body.hobbies?.trim();
+    const spotMeText =
+      body.spotMeText !== undefined
+        ? normalizeSpotMeText(body.spotMeText)
+        : undefined;
+
+    const profile = await updateUserInDb({
+      userId: access.user.id,
+      nickname,
+      favoriteFood,
+      hobbies,
+      spotMeText,
+    });
+
+    if (!profile) {
+      return NextResponse.json(
+        { error: "プロフィールが見つかりません" },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ profile });
+  } catch (error) {
+    console.error("Profile update failed:", error);
+    return NextResponse.json(
+      { error: "プロフィールの更新に失敗しました" },
       { status: 500 },
     );
   }

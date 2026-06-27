@@ -5,14 +5,15 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/apiClient";
 import { CURRENT_USER_ID } from "@/lib/types";
-import type { Message, PublicUserProfile } from "@/lib/types";
+import type { MatchStatus, Message, PublicUserProfile } from "@/lib/types";
 
 interface ThreadResponse {
   partner: PublicUserProfile;
   messages: Message[];
   canMessage: boolean;
   messageRestriction: string | null;
-  proximityExpiresAt: string | null;
+  matchStatus: MatchStatus | null;
+  partnerLastActiveLabel: string | null;
 }
 
 function formatMessageTime(iso: string): string {
@@ -34,9 +35,10 @@ export function ChatThread({ partnerId }: ChatThreadProps) {
   const [draft, setDraft] = useState("");
   const [canMessage, setCanMessage] = useState(false);
   const [restriction, setRestriction] = useState<string | null>(null);
-  const [proximityExpiresAt, setProximityExpiresAt] = useState<string | null>(
-    null,
-  );
+  const [matchStatus, setMatchStatus] = useState<MatchStatus | null>(null);
+  const [partnerLastActiveLabel, setPartnerLastActiveLabel] = useState<
+    string | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +55,8 @@ export function ChatThread({ partnerId }: ChatThreadProps) {
       setMessages(data.messages);
       setCanMessage(data.canMessage);
       setRestriction(data.messageRestriction);
-      setProximityExpiresAt(data.proximityExpiresAt);
+      setMatchStatus(data.matchStatus);
+      setPartnerLastActiveLabel(data.partnerLastActiveLabel);
     } catch (err) {
       setError(err instanceof Error ? err.message : "読み込みに失敗しました");
     } finally {
@@ -83,6 +86,7 @@ export function ChatThread({ partnerId }: ChatThreadProps) {
       });
       setMessages((prev) => [...prev, data.message]);
       setDraft("");
+      setMatchStatus("active");
       setCanMessage(true);
       setRestriction(null);
     } catch (err) {
@@ -151,6 +155,8 @@ export function ChatThread({ partnerId }: ChatThreadProps) {
 
   if (!partner) return null;
 
+  const isExpired = matchStatus === "expired";
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-3 border-b border-rose-100 bg-white/90 px-4 py-3 backdrop-blur-md">
@@ -170,17 +176,8 @@ export function ChatThread({ partnerId }: ChatThreadProps) {
           <p className="truncate font-semibold text-gray-900">
             {partner.nickname}
           </p>
-          {proximityExpiresAt && canMessage && (
-            <p className="text-xs text-gray-400">
-              送信可能期限:{" "}
-              {new Date(proximityExpiresAt).toLocaleString("ja-JP", {
-                month: "numeric",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-              まで
-            </p>
+          {partnerLastActiveLabel && (
+            <p className="text-xs text-gray-400">{partnerLastActiveLabel}</p>
           )}
         </div>
         <button
@@ -226,8 +223,14 @@ export function ChatThread({ partnerId }: ChatThreadProps) {
         </div>
       )}
 
+      {isExpired && (
+        <div className="bg-amber-50 px-4 py-2 text-center text-xs text-amber-700">
+          マッチ解除されました。メッセージ履歴は閲覧できますが、新しいメッセージは送信できません。
+        </div>
+      )}
+
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && (
+        {messages.length === 0 && !isExpired && (
           <p className="text-center text-sm text-gray-400">
             最初のメッセージを送ってみましょう
           </p>

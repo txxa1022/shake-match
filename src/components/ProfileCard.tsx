@@ -32,6 +32,12 @@ export function ProfileCard({ user, onLike, onMessage }: ProfileCardProps) {
         </div>
 
         <dl className="space-y-2 text-sm text-gray-600">
+          {user.spotMeText && (
+            <div>
+              <dt className="font-medium text-gray-800">Spot me</dt>
+              <dd>{user.spotMeText}</dd>
+            </div>
+          )}
           <div>
             <dt className="font-medium text-gray-800">好きなご飯</dt>
             <dd>{user.favoriteFood}</dd>

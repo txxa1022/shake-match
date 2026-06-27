@@ -10,6 +10,7 @@ export interface UserProfile {
   photoUrl: string;
   favoriteFood: string;
   hobbies: string;
+  spotMeText: string;
   latitude: number;
   longitude: number;
 }
@@ -22,6 +23,7 @@ export interface PublicUserProfile {
   photoUrl: string;
   favoriteFood: string;
   hobbies: string;
+  spotMeText: string;
 }
 
 export interface NearbyUser extends UserProfile {
@@ -44,6 +46,17 @@ export interface ProximityMatch {
   expiresAt: string;
 }
 
+export type MatchStatus = "active" | "expired";
+
+export interface ConversationMatch {
+  id: string;
+  userA: string;
+  userB: string;
+  status: MatchStatus;
+  createdAt: string;
+  expiredAt: string | null;
+}
+
 export interface Message {
   id: string;
   senderId: string;
@@ -59,7 +72,8 @@ export interface ConversationSummary {
   lastMessage: Message | null;
   unreadCount: number;
   canMessage: boolean;
-  proximityExpiresAt: string | null;
+  matchStatus: MatchStatus | null;
+  partnerLastActiveLabel: string | null;
 }
 
 export interface Block {
@@ -89,3 +103,16 @@ export const FILTER_STORAGE_KEY = "shake-match-filters";
 export const CURRENT_USER_ID = "me";
 
 export const PROXIMITY_EXPIRY_HOURS = 24;
+
+/** ビーコン（在席表示）の有効時間（分） */
+export const BEACON_DURATION_MINUTES = Number(
+  process.env.BEACON_DURATION_MINUTES ?? 30,
+);
+
+/** メッセージ送信可能な最大距離（メートル） */
+export const MESSAGE_MAX_DISTANCE_METERS = 1500;
+
+/** マッチ自動解除の距離閾値（メートル） */
+export const MATCH_EXPIRE_DISTANCE_METERS = 3000;
+
+export const SPOT_ME_TEXT_MAX_LENGTH = 50;

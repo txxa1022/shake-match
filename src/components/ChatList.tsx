@@ -51,9 +51,11 @@ export function ChatList({ conversations }: ChatListProps) {
   return (
     <ul className="space-y-3">
       {conversations.map((conversation) => {
-        const preview = conversation.lastMessage?.content ?? "まだメッセージはありません";
-        const timeSource =
-          conversation.lastMessage?.createdAt ?? conversation.proximityExpiresAt;
+        const isExpired = conversation.matchStatus === "expired";
+        const preview = isExpired
+          ? "マッチ解除されました"
+          : (conversation.lastMessage?.content ?? "まだメッセージはありません");
+        const timeSource = conversation.lastMessage?.createdAt;
 
         return (
           <li key={conversation.partnerId}>
@@ -78,10 +80,21 @@ export function ChatList({ conversations }: ChatListProps) {
                     </span>
                   )}
                 </div>
-                <p className="mt-1 truncate text-sm text-gray-500">{preview}</p>
-                {!conversation.canMessage && (
+                <p
+                  className={`mt-1 truncate text-sm ${
+                    isExpired ? "text-amber-600" : "text-gray-500"
+                  }`}
+                >
+                  {preview}
+                </p>
+                {conversation.partnerLastActiveLabel && (
+                  <p className="mt-1 text-xs text-gray-400">
+                    {conversation.partnerLastActiveLabel}
+                  </p>
+                )}
+                {!conversation.canMessage && !isExpired && (
                   <p className="mt-1 text-xs text-amber-600">
-                    メッセージ送信期限切れ
+                    現在メッセージを送信できません
                   </p>
                 )}
               </div>

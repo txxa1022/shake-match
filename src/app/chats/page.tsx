@@ -5,7 +5,7 @@ import { getServerAuthenticatedUser } from "@/lib/authGuards";
 
 export default async function ChatsPage() {
   const user = await getServerAuthenticatedUser();
-  const conversations = getConversationsForUser(user.id);
+  const conversations = await getConversationsForUser(user.id);
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">

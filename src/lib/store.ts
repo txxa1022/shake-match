@@ -1,5 +1,6 @@
 import type {
   Block,
+  ConversationMatch,
   Message,
   ProximityMatch,
   Report,
@@ -8,6 +9,7 @@ import { PROXIMITY_EXPIRY_HOURS } from "@/lib/types";
 
 interface PrototypeStore {
   proximityMatches: ProximityMatch[];
+  conversationMatches: ConversationMatch[];
   messages: Message[];
   blocks: Block[];
   reports: Report[];
@@ -21,6 +23,7 @@ declare global {
 function createStore(): PrototypeStore {
   return {
     proximityMatches: [],
+    conversationMatches: [],
     messages: [],
     blocks: [],
     reports: [],
@@ -40,6 +43,10 @@ function newId(prefix: string): string {
 
 function addHours(date: Date, hours: number): Date {
   return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
+function pairKey(userA: string, userB: string): [string, string] {
+  return userA < userB ? [userA, userB] : [userB, userA];
 }
 
 export function recordProximityMatches(
@@ -65,33 +72,76 @@ export function recordProximityMatches(
   return created;
 }
 
-export function hasActiveProximityMatch(
-  userId: string,
-  matchedUserId: string,
-): ProximityMatch | null {
+export function getMatchBetween(
+  userA: string,
+  userB: string,
+): ConversationMatch | null {
   const store = getStore();
-  const now = Date.now();
+  const [a, b] = pairKey(userA, userB);
 
-  const match = store.proximityMatches
-    .filter(
-      (entry) =>
-        entry.userId === userId &&
-        entry.matchedUserId === matchedUserId &&
-        new Date(entry.expiresAt).getTime() > now,
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )[0];
-
-  return match ?? null;
+  return (
+    store.conversationMatches.find(
+      (match) => match.userA === a && match.userB === b,
+    ) ?? null
+  );
 }
 
-export function getActiveProximityMatch(
-  userId: string,
-  matchedUserId: string,
-): ProximityMatch | null {
-  return hasActiveProximityMatch(userId, matchedUserId);
+export function createOrActivateMatch(
+  userA: string,
+  userB: string,
+): ConversationMatch {
+  const store = getStore();
+  const existing = getMatchBetween(userA, userB);
+  if (existing) {
+    if (existing.status === "expired") {
+      return existing;
+    }
+    return existing;
+  }
+
+  const [a, b] = pairKey(userA, userB);
+  const now = new Date().toISOString();
+  const match: ConversationMatch = {
+    id: newId("cm"),
+    userA: a,
+    userB: b,
+    status: "active",
+    createdAt: now,
+    expiredAt: null,
+  };
+  store.conversationMatches.push(match);
+  return match;
+}
+
+export function expireMatch(userA: string, userB: string): ConversationMatch | null {
+  const store = getStore();
+  const match = getMatchBetween(userA, userB);
+  if (!match || match.status === "expired") return match;
+
+  match.status = "expired";
+  match.expiredAt = new Date().toISOString();
+  const index = store.conversationMatches.findIndex((entry) => entry.id === match.id);
+  if (index >= 0) {
+    store.conversationMatches[index] = match;
+  }
+  return match;
+}
+
+export function getMatchPartnerIds(userId: string): string[] {
+  const store = getStore();
+  const partnerIds = new Set<string>();
+
+  for (const match of store.conversationMatches) {
+    if (match.userA === userId) partnerIds.add(match.userB);
+    if (match.userB === userId) partnerIds.add(match.userA);
+  }
+
+  for (const message of store.messages) {
+    if (message.senderId === userId) partnerIds.add(message.receiverId);
+    if (message.receiverId === userId) partnerIds.add(message.senderId);
+  }
+
+  return Array.from(partnerIds).filter((id) => !isBlocked(userId, id));
 }
 
 export function isBlocked(userA: string, userB: string): boolean {
@@ -199,41 +249,5 @@ export function markMessagesAsRead(
 }
 
 export function getConversationPartnerIds(userId: string): string[] {
-  const store = getStore();
-  const partnerIds = new Set<string>();
-
-  for (const message of store.messages) {
-    if (message.senderId === userId) partnerIds.add(message.receiverId);
-    if (message.receiverId === userId) partnerIds.add(message.senderId);
-  }
-
-  for (const match of store.proximityMatches) {
-    if (match.userId === userId) partnerIds.add(match.matchedUserId);
-  }
-
-  return Array.from(partnerIds).filter((id) => !isBlocked(userId, id));
-}
-
-export function canSendMessage(senderId: string, receiverId: string): {
-  allowed: boolean;
-  reason?: string;
-} {
-  if (senderId === receiverId) {
-    return { allowed: false, reason: "自分自身には送信できません" };
-  }
-
-  if (isBlocked(senderId, receiverId)) {
-    return { allowed: false, reason: "ブロックされているため送信できません" };
-  }
-
-  const match = hasActiveProximityMatch(senderId, receiverId);
-  if (!match) {
-    return {
-      allowed: false,
-      reason:
-        "このユーザーにはメッセージを送れません。シェイクで近接表示された相手のみ送信可能です（24時間以内）",
-    };
-  }
-
-  return { allowed: true };
+  return getMatchPartnerIds(userId);
 }

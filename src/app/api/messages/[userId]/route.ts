@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { enforceApiAccess } from "@/lib/authGuards";
+import { canSendMessageAsync } from "@/lib/matching";
 import {
-  canSendMessage,
-  getActiveProximityMatch,
+  getMatchBetween,
   getMessagesBetween,
   isBlocked,
   markMessagesAsRead,
 } from "@/lib/store";
+import { formatLastActiveLabel, getUserLocation } from "@/lib/userLocations";
 import { getPublicProfileAsync } from "@/lib/users";
 
 interface RouteContext {
@@ -38,14 +39,18 @@ export async function GET(request: Request, context: RouteContext) {
   markMessagesAsRead(currentUserId, partnerId);
 
   const messages = getMessagesBetween(currentUserId, partnerId);
-  const proximity = getActiveProximityMatch(currentUserId, partnerId);
-  const sendCheck = canSendMessage(currentUserId, partnerId);
+  const match = getMatchBetween(currentUserId, partnerId);
+  const sendCheck = await canSendMessageAsync(currentUserId, partnerId);
+  const partnerLocation = await getUserLocation(partnerId);
 
   return NextResponse.json({
     partner,
     messages,
     canMessage: sendCheck.allowed,
     messageRestriction: sendCheck.allowed ? null : sendCheck.reason,
-    proximityExpiresAt: proximity?.expiresAt ?? null,
+    matchStatus: match?.status ?? null,
+    partnerLastActiveLabel: formatLastActiveLabel(
+      partnerLocation?.beaconActiveUntil ?? null,
+    ),
   });
 }

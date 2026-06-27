@@ -11,6 +11,7 @@ create table if not exists users (
   photo_url text,
   favorite_food text,
   hobbies text,
+  spot_me_text text check (spot_me_text is null or char_length(spot_me_text) <= 50),
   kyc_status text not null default 'pending'
     check (kyc_status in ('pending', 'verified', 'rejected')),
   is_adult_verified boolean not null default false,
@@ -20,11 +21,16 @@ create table if not exists users (
 create table if not exists user_locations (
   user_id uuid primary key references users(id) on delete cascade,
   location geography(point, 4326) not null,
+  beacon_active_until timestamptz,
   updated_at timestamptz not null default now()
 );
 
 create index if not exists user_locations_geo_idx
   on user_locations using gist (location);
+
+create index if not exists user_locations_beacon_idx
+  on user_locations (beacon_active_until)
+  where beacon_active_until is not null;
 
 create table if not exists proximity_matches (
   id uuid primary key default gen_random_uuid(),
@@ -66,7 +72,11 @@ create table if not exists reports (
   created_at timestamptz not null default now()
 );
 
--- 近接ユーザー検索 (PostGIS st_dwithin)
+-- 既存DBへのカラム追加（冪等）
+alter table users add column if not exists spot_me_text text;
+alter table user_locations add column if not exists beacon_active_until timestamptz;
+
+-- 近接ユーザー検索 (PostGIS st_dwithin + ビーコンONユーザーのみ)
 create or replace function find_nearby_users(
   p_lat double precision,
   p_lng double precision,
@@ -85,6 +95,7 @@ returns table (
   photo_url text,
   favorite_food text,
   hobbies text,
+  spot_me_text text,
   distance_meters double precision
 )
 language sql
@@ -98,6 +109,7 @@ as $$
     u.photo_url,
     u.favorite_food,
     u.hobbies,
+    u.spot_me_text,
     st_distance(
       ul.location,
       st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography
@@ -109,6 +121,8 @@ as $$
     and extract(year from age(u.birth_date))::integer >= p_age_min
     and extract(year from age(u.birth_date))::integer <= p_age_max
     and (p_gender = 'any' or u.gender = p_gender)
+    and ul.beacon_active_until is not null
+    and ul.beacon_active_until > now()
     and st_dwithin(
       ul.location,
       st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography,
@@ -118,22 +132,41 @@ as $$
   limit p_limit;
 $$;
 
--- シェイク時の位置スナップショット（直近1件のみ保持）
+-- シェイク時の位置スナップショット + ビーコンON（30分）
 create or replace function upsert_user_location(
   p_user_id uuid,
   p_lat double precision,
-  p_lng double precision
+  p_lng double precision,
+  p_beacon_minutes integer default 30
 )
 returns void
 language sql
 as $$
-  insert into user_locations (user_id, location, updated_at)
+  insert into user_locations (user_id, location, beacon_active_until, updated_at)
   values (
     p_user_id,
     st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography,
+    now() + (p_beacon_minutes || ' minutes')::interval,
     now()
   )
   on conflict (user_id) do update set
     location = excluded.location,
+    beacon_active_until = excluded.beacon_active_until,
     updated_at = now();
+$$;
+
+-- ユーザー間の最新距離（メートル）
+create or replace function get_users_distance_meters(
+  p_user_a uuid,
+  p_user_b uuid
+)
+returns double precision
+language sql
+stable
+as $$
+  select st_distance(a.location, b.location)
+  from user_locations a
+  cross join user_locations b
+  where a.user_id = p_user_a
+    and b.user_id = p_user_b;
 $$;

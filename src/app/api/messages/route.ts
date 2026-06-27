@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getConversationsForUser } from "@/lib/conversations";
 import { enforceApiAccess } from "@/lib/authGuards";
-import { canSendMessage, createMessage } from "@/lib/store";
+import {
+  canSendMessageAsync,
+  ensureMatchOnMessage,
+} from "@/lib/matching";
+import { createMessage } from "@/lib/store";
 import { getPublicProfileAsync } from "@/lib/users";
 import type { Message } from "@/lib/types";
 
@@ -9,7 +13,7 @@ export async function GET(request: Request) {
   const access = enforceApiAccess(request);
   if (!access.ok) return access.response;
 
-  const conversations = getConversationsForUser(access.user.id);
+  const conversations = await getConversationsForUser(access.user.id);
   return NextResponse.json({ conversations });
 }
 
@@ -56,7 +60,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const sendCheck = canSendMessage(currentUserId, body.receiverId);
+    const sendCheck = await canSendMessageAsync(currentUserId, body.receiverId);
     if (!sendCheck.allowed) {
       return NextResponse.json(
         { error: sendCheck.reason },
@@ -69,6 +73,8 @@ export async function POST(request: Request) {
       receiverId: body.receiverId,
       content,
     });
+
+    ensureMatchOnMessage(currentUserId, body.receiverId);
 
     return NextResponse.json({ message } satisfies { message: Message });
   } catch {
